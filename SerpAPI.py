@@ -40,7 +40,10 @@ def search_results(google_search):
     params = {
       "engine": "google",
       "q": google_search,
-      "api_key": serp_api_key
+      "api_key": serp_api_key,
+      "hl":"en",
+      "gl":"us", 
+      "device":"desktop"
     }
 
     search = GoogleSearch(params)
@@ -231,7 +234,10 @@ async def async_search_results(session, google_search):
     params = {
         'q': google_search,
         'api_key': serp_api_key,
-        'engine': 'google'
+        'engine': 'google',
+        "hl":"en",
+        "gl":"us", 
+        "device":"desktop"
     }
     async with session.get(SERP_API_URL, params=params) as response:
         data = await response.json()
