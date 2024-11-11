@@ -160,13 +160,10 @@ def process_csv(file_path):
     df['Reviews_with_alcohol']= df['output'].apply(lambda x: pd.Series(x))[2]
     df['TP_review_audit']=(df['Reviews_with_pizza']/df['Review_counts']).apply(lambda x: f"{int(np.nan_to_num(x * 100))}%")
     df['Reservation Provider']=df['results'].apply(reservation_type)
-    df['Email']=df['results'].apply(email_lookup)
-    df['Email1']= df['Email'].apply(lambda x: pd.Series(x))[0]
-    df['Email2']= df['Email'].apply(lambda x: pd.Series(x))[1]
     df['Price']=df['results'].apply(price_lookup)
     df['Google Classification']=df['results'].apply(googleclassification_lookup)
     df['Permanently closed']=df['results'].apply(is_perm_closed)
-    df.drop(['results','Email','output'], axis=1,inplace=True)
+    df.drop(['results','output'], axis=1,inplace=True)
     df.to_csv(file_path[:-4]+" - output.csv", index=False)
     return df
 
@@ -275,8 +272,6 @@ async def apply_review_audit_async(df,max_reviews):
 
 # 1) Run Searches Function to retrieve API reponse for each shop
 
-# In[46]:
-
 
 # Example usage
 df = pd.read_csv('Batch 3.csv')
@@ -285,16 +280,11 @@ df['api_response'] = await process_async_search_results(df)
 
 # 2) Run functions on the API response and store in the dataframe
 
-# In[49]:
-
 
 df['PlaceID'] = df['api_response'].apply(get_place_id)
 df['searchID'] = df['api_response'].apply(store_search_id)
 df['Shop Name']=df['api_response'].apply(get_shop_name)
 df['Address']=df['api_response'].apply(get_place_address)
-df['Email']=df['api_response'].apply(email_lookup)
-df['Email1']= df['Email'].apply(lambda x: pd.Series(x))[0]
-df['Email2']= df['Email'].apply(lambda x: pd.Series(x))[1]
 df['Price']=df['api_response'].apply(price_lookup)
 df['Google Classification']=df['api_response'].apply(googleclassification_lookup)
 df['Reservation Provider']=df['api_response'].apply(reservation_type)
@@ -303,21 +293,11 @@ df['Reservation Provider']=df['api_response'].apply(reservation_type)
 
 # 3) Run the Review Function and store the results in a new column called 'Review_Audit'
 
-# In[50]:
-
 
 df['Review_Audit'] = await apply_review_audit_async(df,18)
 
 
-# In[52]:
-
-
-df
-
-
 # 4) Run cleanup functions on the output of the main Review Function 
-
-# In[53]:
 
 
 df['Review_counts']= df['Review_Audit'].apply(lambda x: pd.Series(x))[0]
