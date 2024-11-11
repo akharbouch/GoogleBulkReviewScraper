@@ -161,12 +161,9 @@ def process_csv(file_path):
     df['Reviews_with_alcohol']= df['output'].apply(lambda x: pd.Series(x))[2]
     df['TP_review_audit']=(df['Reviews_with_pizza']/df['Review_counts']).apply(lambda x: f"{int(np.nan_to_num(x * 100))}%")
     df['Reservation Provider']=df['results'].apply(reservation_type)
-    df['Email']=df['results'].apply(email_lookup)
-    df['Email1']= df['Email'].apply(lambda x: pd.Series(x))[0]
-    df['Email2']= df['Email'].apply(lambda x: pd.Series(x))[1]
     df['Price']=df['results'].apply(price_lookup)
     df['Google Classification']=df['results'].apply(googleclassification_lookup)
     df['Permanently closed']=df['results'].apply(is_perm_closed)
-    df.drop(['results','Email','output'], axis=1,inplace=True)
+    df.drop(['results','output'], axis=1,inplace=True)
     df.to_csv(file_path[:-4]+" - output.csv", index=False)
     return df
