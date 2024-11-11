@@ -1,0 +1,169 @@
+from serpapi import GoogleSearch
+import googlemaps
+import csv
+import pandas as pd
+import numpy as np
+import aiohttp
+import asyncio
+import pandas as pd
+
+from tqdm.notebook import tqdm
+tqdm.pandas()
+
+serp_api_key='8a8e3b429e2fc84b99fe82f5093a4644947098bd07f9ec44259dca8f8de4e85c'
+
+# First API call to capture Google My Business Page
+def search_results(google_search):
+    params = {
+      "engine": "google",
+      "q": google_search,
+      "api_key": serp_api_key,
+      "hl":"en",
+      "gl":"us", 
+      "device":"desktop",
+      "google_domain":"google.com"  
+    }
+
+    search = GoogleSearch(params)
+    results = search.get_dict()
+    return results
+
+
+# Functions to pull various information from the GMB
+def store_search_id(results):  
+    try: 
+        return results['search_metadata']['id']
+    except:
+        return "No searchID generated"
+
+def get_place_id(results):  
+    try: 
+        return results['knowledge_graph']['place_id']
+    except:
+        return "No place found"
+
+def get_place_address(results):
+    try:
+        return results['knowledge_graph']['address']
+    except:
+        return "No place found"
+
+def get_shop_name(results):
+    try: 
+        return results['knowledge_graph']['title']
+    except:
+        return "No place found"
+
+def get_search_link(results):
+    try: 
+        return results['knowledge_graph']['knowledge_graph_search_link']
+    except:
+        return "No place found"
+
+def price_lookup(results):
+    try:
+        return results['knowledge_graph']['price']
+    except:
+        return "No price found"
+
+def googleclassification_lookup(results):
+    try:
+        return results['knowledge_graph']['type']
+    except:
+        return "No Google Classification found"
+    
+def reservation_type(results):
+    try:
+        return results['knowledge_graph']['reservation_providers'][0]['name']
+    except:
+        return "No reservation provider found"
+
+def is_perm_closed(results):
+    try:
+        return results['knowledge_graph']['permanently_closed']
+    except:
+        return "No closure banner found"
+
+
+# 2nd API Call to Reviews API to pull the first two pages of reviews (this counts as 2 API Calls for each page pulled)
+
+def fetch_reviews(place_id, api_key, max_reviews=18):
+    all_reviews = []
+    next_page_token = None
+    while len(all_reviews) < max_reviews:
+        params = {
+            "engine": "google_maps_reviews",
+            "place_id": place_id,
+            "api_key": api_key,
+            "hl": "en",  
+            "sort_by": "qualityScore"
+        }
+
+        if next_page_token:
+            params["next_page_token"] = next_page_token
+
+        search = GoogleSearch(params)
+        results = search.get_dict()
+
+        if "reviews" in results:
+            all_reviews.extend(results["reviews"])
+
+        if "serpapi_pagination" in results and "next_page_token" in results["serpapi_pagination"]:
+            next_page_token = results["serpapi_pagination"]["next_page_token"]
+        else:
+            break
+
+    return all_reviews[:18]
+
+
+
+# Function to perform calcs on how many reviews are scraped and how many of those reviews contain pizza keywords
+def review_audit(place_id,max_reviews):
+
+    reviews = fetch_reviews(place_id, serp_api_key, max_reviews)
+
+# Print out the reviews
+    review_count=0
+    reviews_with_pizza=0
+    reviews_with_alcohol = 0
+    pizza_keywords = ['pizza', 'pie', 'pizzeria', 'slice']
+    alcohol_keywords = ['liquor', 'whisky', 'cocktail', 'wine', 'alcohol',' gin ', 'tequila', 'scotch', 'bourbon']
+    for review in reviews:
+        try:
+            if len(review['snippet']) > 1:
+                review_count += 1
+
+                if any(keyword in review['snippet'].lower() for keyword in pizza_keywords):
+                    reviews_with_pizza += 1
+                
+                if any(keyword in review['snippet'].lower() for keyword in alcohol_keywords):
+                    reviews_with_alcohol += 1
+        except:
+            review_count += 0
+    return [review_count, reviews_with_pizza, reviews_with_alcohol]
+
+
+# Wrapper function to call previously defined functions and outputs results to a csv
+def process_csv(file_path):
+    # Read the CSV file into a DataFrame
+    df = pd.read_csv(file_path)
+    df['results']=df['Google Search'].progress_apply(search_results)
+    df['searchID'] = df['results'].apply(store_search_id)
+    df['PlaceID'] = df['results'].apply(get_place_id)
+    df['Shop Name']=df['results'].apply(get_shop_name)
+    df['Address']=df['results'].apply(get_place_address)
+    df['output'] = df.progress_apply(lambda row:review_audit(row['PlaceID'],18),axis=1)
+    df['Review_counts']= df['output'].apply(lambda x: pd.Series(x))[0]
+    df['Reviews_with_pizza']= df['output'].apply(lambda x: pd.Series(x))[1]
+    df['Reviews_with_alcohol']= df['output'].apply(lambda x: pd.Series(x))[2]
+    df['TP_review_audit']=(df['Reviews_with_pizza']/df['Review_counts']).apply(lambda x: f"{int(np.nan_to_num(x * 100))}%")
+    df['Reservation Provider']=df['results'].apply(reservation_type)
+    df['Email']=df['results'].apply(email_lookup)
+    df['Email1']= df['Email'].apply(lambda x: pd.Series(x))[0]
+    df['Email2']= df['Email'].apply(lambda x: pd.Series(x))[1]
+    df['Price']=df['results'].apply(price_lookup)
+    df['Google Classification']=df['results'].apply(googleclassification_lookup)
+    df['Permanently closed']=df['results'].apply(is_perm_closed)
+    df.drop(['results','Email','output'], axis=1,inplace=True)
+    df.to_csv(file_path[:-4]+" - output.csv", index=False)
+    return df
