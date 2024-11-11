@@ -1,22 +1,5 @@
 #!/usr/bin/env python
 # coding: utf-8
-
-# In[47]:
-
-
-pip install google-search-results
-pip install aiohttp
-
-
-# In[ ]:
-
-
-
-
-
-# In[2]:
-
-
 from serpapi import GoogleSearch
 import googlemaps
 import csv
@@ -31,11 +14,7 @@ tqdm.pandas()
 
 serp_api_key='8a8e3b429e2fc84b99fe82f5093a4644947098bd07f9ec44259dca8f8de4e85c'
 
-
-
-# In[4]:
-
-
+# First API call to capture Google My Business Page
 def search_results(google_search):
     params = {
       "engine": "google",
@@ -43,7 +22,8 @@ def search_results(google_search):
       "api_key": serp_api_key,
       "hl":"en",
       "gl":"us", 
-      "device":"desktop"
+      "device":"desktop",
+      "google_domain":"google.com"  
     }
 
     search = GoogleSearch(params)
@@ -51,7 +31,7 @@ def search_results(google_search):
     return results
 
 
-# In[48]:
+# Functions to pull various information from the GMB
 def store_search_id(results):  
     try: 
         return results['search_metadata']['id']
@@ -100,34 +80,46 @@ def reservation_type(results):
     except:
         return "No reservation provider found"
 
-
-# In[9]:
-
-
-def email_lookup(results):
+def is_perm_closed(results):
     try:
-        email1=results['organic_results'][0]['snippet_highlighted_words']
+        return results['knowledge_graph']['permanently_closed']
     except:
-        email1="No email found"
-    try:
-        email2=results['organic_results'][1]['snippet_highlighted_words']
-    except:
-        email2="No email found"
-    try:
-        return email1,email2 
-    except:
-        return "No email found"
+        return "No closure banner found"
 
 
-# In[10]:
+# 2nd API Call to Reviews API to pull the first two pages of reviews (this counts as 2 API Calls for each page pulled)
+
+def fetch_reviews(place_id, api_key, max_reviews=18):
+    all_reviews = []
+    next_page_token = None
+    while len(all_reviews) < max_reviews:
+        params = {
+            "engine": "google_maps_reviews",
+            "place_id": place_id,
+            "api_key": api_key,
+            "hl": "en",  
+            "sort_by": "qualityScore"
+        }
+
+        if next_page_token:
+            params["next_page_token"] = next_page_token
+
+        search = GoogleSearch(params)
+        results = search.get_dict()
+
+        if "reviews" in results:
+            all_reviews.extend(results["reviews"])
+
+        if "serpapi_pagination" in results and "next_page_token" in results["serpapi_pagination"]:
+            next_page_token = results["serpapi_pagination"]["next_page_token"]
+        else:
+            break
+
+    return all_reviews[:18]
 
 
 
-
-
-# In[11]:
-
-
+# Function to perform calcs on how many reviews are scraped and how many of those reviews contain pizza keywords
 def review_audit(place_id,max_reviews):
 
     reviews = fetch_reviews(place_id, serp_api_key, max_reviews)
@@ -153,50 +145,12 @@ def review_audit(place_id,max_reviews):
     return [review_count, reviews_with_pizza, reviews_with_alcohol]
 
 
-# In[12]:
-
-
-def fetch_reviews(place_id, api_key, max_reviews=18):
-    all_reviews = []
-    next_page_token = None
-
-    while len(all_reviews) < max_reviews:
-        params = {
-            "engine": "google_maps_reviews",
-            "place_id": place_id,
-            "api_key": api_key,
-            "hl": "en",  # Language (optional),
-            "sort_by": "qualityScore"
-        }
-
-        if next_page_token:
-            params["next_page_token"] = next_page_token
-
-        search = GoogleSearch(params)
-        results = search.get_dict()
-
-        if "reviews" in results:
-            all_reviews.extend(results["reviews"])
-
-        if "serpapi_pagination" in results and "next_page_token" in results["serpapi_pagination"]:
-            next_page_token = results["serpapi_pagination"]["next_page_token"]
-        else:
-            break
-
-    return all_reviews[:18]
-
-
-
-
-
-# In[13]:
-
-
+# Wrapper function to call previously defined functions and outputs results to a csv
 def process_csv(file_path):
     # Read the CSV file into a DataFrame
     df = pd.read_csv(file_path)
     df['results']=df['Google Search'].progress_apply(search_results)
-    df['searchID'] = df['api_response'].apply(store_search_id)
+    df['searchID'] = df['results'].apply(store_search_id)
     df['PlaceID'] = df['results'].apply(get_place_id)
     df['Shop Name']=df['results'].apply(get_shop_name)
     df['Address']=df['results'].apply(get_place_address)
@@ -211,20 +165,16 @@ def process_csv(file_path):
     df['Email2']= df['Email'].apply(lambda x: pd.Series(x))[1]
     df['Price']=df['results'].apply(price_lookup)
     df['Google Classification']=df['results'].apply(googleclassification_lookup)
+    df['Permanently closed']=df['results'].apply(is_perm_closed)
     df.drop(['results','Email','output'], axis=1,inplace=True)
     df.to_csv(file_path[:-4]+" - output.csv", index=False)
     return df
-
-
-# In[ ]:
 
 
 
 
 
 # **Use the following for processing large API requests**
-
-# In[14]:
 
 
 # Asynchronous function to fetch API results from Google Places API
@@ -379,49 +329,4 @@ df['Alcohol_Focus']=(df['Reviews_with_alcohol']/df['Review_counts']).apply(lambd
 
 
 df.drop(['api_response','Email','Review_Audit'], axis=1,inplace=True)
-
-
-# 5. Save final dataframe to a csv
-
-# In[54]:
-
-
-df.to_csv('Batch 3 - output.csv', index=False)
-
-
-# In[202]:
-
-
-
-
-
-# In[ ]:
-
-
-from flask import Flask, request, render_template_string
-from os import environ
-
-app = Flask(__name__)
-
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    if request.method == 'POST':
-        nameandaddress = request.form['nameandaddress']
-        placeid=get_place_id(nameandaddress)
-        reviewsresult=review_audit(placeid,30)
-        if placeid is None:
-            return render_template_string(f"No place found for given Name and Address")
-        if reviewsresult[0]==0:
-            return render_template_string(f"No more search credits available or no reviews found")
-        return render_template_string(f"Number of reviews scraped is {reviewsresult[0]} and number of reviews with pizza is {reviewsresult[1]}")
-    return render_template_string('''
-        <form method="POST">
-            <input type="text" name="nameandaddress" placeholder="Name and Address">
-            <button type="submit">Calculate</button>
-        </form>
-    ''')
-
-if __name__ == '__main__':
-    port = int(environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
 
