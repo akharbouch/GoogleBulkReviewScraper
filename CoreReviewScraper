@@ -124,8 +124,6 @@ def fetch_reviews(place_id, api_key, max_reviews=18):
 def review_audit(place_id,max_reviews):
 
     reviews = fetch_reviews(place_id, serp_api_key, max_reviews)
-
-# Print out the reviews
     review_count=0
     reviews_with_pizza=0
     reviews_with_alcohol = 0
