@@ -13,6 +13,7 @@ import pandas as pd
 from tqdm.notebook import tqdm
 tqdm.pandas()
 
+# Meant to be kept secret
 serp_api_key='8a8e3b429e2fc84b99fe82f5093a4644947098bd07f9ec44259dca8f8de4e85c'
 
 # First API call to capture Google My Business Page
